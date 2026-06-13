@@ -17,14 +17,41 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build IPA
+      - name: Build IPA (no-codesign)
         run: flutter build ipa --no-codesign
 
-      - name: Upload IPA artifact
+      - name: Ad-hoc sign for AltStore compatibility
+        run: |
+          APP_PATH="$(find build/ios/ipa -name 'Runner.app' | head -1)"
+          echo "Signing: $APP_PATH"
+          # Sign embedded frameworks first
+          find "$APP_PATH/Frameworks" -name "*.framework" | while read fw; do
+            codesign -f -s - --timestamp=none "$fw"
+          done
+          find "$APP_PATH/Frameworks" -name "*.dylib" | while read lib; do
+            codesign -f -s - --timestamp=none "$lib"
+          done
+          # Sign the main app bundle
+          codesign -f -s - --timestamp=none "$APP_PATH"
+          echo "Ad-hoc signing complete"
+
+      - name: Package IPA
+        run: |
+          APP_PATH="$(find build/ios/ipa -name 'Runner.app' | head -1)"
+          IPA_DIR="$(dirname "$APP_PATH")"
+          # If already packaged as IPA, re-package with signed app
+          mkdir -p /tmp/Payload
+          cp -r "$APP_PATH" /tmp/Payload/
+          cd /tmp
+          zip -r bot_signed.ipa Payload
+          cp bot_signed.ipa "$GITHUB_WORKSPACE/bot_signed.ipa"
+          echo "IPA packaged: $GITHUB_WORKSPACE/bot_signed.ipa"
+          ls -lh "$GITHUB_WORKSPACE/bot_signed.ipa"
+
+      - name: Upload signed IPA
         uses: actions/upload-artifact@v4
         with:
-          name: bot-ipa
-          path: |
-            build/ios/ipa/*.ipa
-            build/ios/archive/*.xcarchive
-            **/Runner.app
+          name: bot-ipa-signed
+          path: bot_signed.ipa
+          retention-days: 30
+          if-no-files-found: error
