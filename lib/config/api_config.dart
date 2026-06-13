@@ -8,11 +8,11 @@
 ///   3. Nalepi ispod BEZ kosih crta na kraju
 ///
 /// Lokalna mreža (zastarelo):
-///   static const String baseUrl = 'http://192.168.1.105:5000';
+///   static const String baseUrl = 'http://172.20.10.7:5000';
 ///
 abstract final class ApiConfig {
   /// LAN IP laptopa (ista Wi-Fi mreža) ili ngrok URL za daljinski pristup.
-  static const String baseUrl = 'http://192.168.1.105:5000';
+  static const String baseUrl = 'http://172.20.10.7:5000';
 
   // --- Flask API (api_server.py) ---
   static const String stateUrl = '$baseUrl/api/state';
