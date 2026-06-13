@@ -1,57 +1,30 @@
 name: Build iOS IPA
-
-on:
-  push:
-    branches: ["**"]
-  workflow_dispatch:
+on: [push]
 
 jobs:
-  build-ipa:
-    name: Flutter iOS build (no-codesign)
+  build:
+    name: Flutter iOS build
     runs-on: macos-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.41
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.41.0"
-          channel: stable
-          cache: true
+          flutter-version: '3.41'
 
       - name: Install dependencies
-        working-directory: .
         run: flutter pub get
 
-      - name: Build IPA (no codesign)
-        working-directory: .
+      - name: Build IPA
         run: flutter build ipa --no-codesign
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bot-ipa-${{ github.sha }}
-          path: build/ios/ipa/*.ipa
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Show IPA info
-        run: |
-          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
-          if [ -n "$IPA" ]; then
-            echo "=== IPA pronadjen ==="
-            ls -lh "$IPA"
-            mkdir -p /tmp/ipa_check/Payload
-            cp "$IPA" /tmp/ipa_check/bot.zip
-            cd /tmp/ipa_check && unzip -q bot.zip
-            PLIST=$(find . -name "Info.plist" -path "*/Runner.app/Info.plist" | head -1)
-            if [ -n "$PLIST" ]; then
-              plutil -p "$PLIST" | grep -E "CFBundleIdentifier|CFBundleSupportedPlatforms|DTPlatformName|MinimumOSVersion|CFBundleShortVersionString"
-              echo "=== Arhitekture ==="
-              lipo -info /tmp/ipa_check/Payload/Runner.app/Runner 2>/dev/null || echo "lipo nije dostupan"
-            fi
-          else
-            echo "IPA NIJE PRONADJEN - proverite log"
-          fi
+          name: bot-ipa
+          path: |
+            build/ios/ipa/*.ipa
+            build/ios/archive/*.xcarchive
+            **/Runner.app
