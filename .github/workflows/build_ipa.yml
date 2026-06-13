@@ -12,7 +12,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41'
+          flutter-version: '3.41.0'
+          channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
@@ -20,32 +22,37 @@ jobs:
       - name: Build IPA (no-codesign)
         run: flutter build ipa --no-codesign
 
-      - name: Ad-hoc sign for AltStore compatibility
+      - name: Find Runner.app and sign ad-hoc
         run: |
-          APP_PATH="$(find build/ios/ipa -name 'Runner.app' | head -1)"
-          echo "Signing: $APP_PATH"
-          # Sign embedded frameworks first
-          find "$APP_PATH/Frameworks" -name "*.framework" | while read fw; do
+          echo "=== Searching for Runner.app ==="
+          APP_PATH=$(find build/ios -name "Runner.app" -type d | head -1)
+          echo "Found: $APP_PATH"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Runner.app not found anywhere in build/ios"
+            ls -la build/ios/ || echo "build/ios does not exist"
+            exit 1
+          fi
+
+          # Sign frameworks first
+          find "$APP_PATH/Frameworks" -name "*.framework" -type d 2>/dev/null | while read fw; do
+            echo "Signing: $fw"
             codesign -f -s - --timestamp=none "$fw"
           done
-          find "$APP_PATH/Frameworks" -name "*.dylib" | while read lib; do
-            codesign -f -s - --timestamp=none "$lib"
-          done
-          # Sign the main app bundle
-          codesign -f -s - --timestamp=none "$APP_PATH"
-          echo "Ad-hoc signing complete"
 
-      - name: Package IPA
+          # Sign main app
+          echo "Signing app: $APP_PATH"
+          codesign -f -s - --timestamp=none "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+
+      - name: Package signed IPA
         run: |
-          APP_PATH="$(find build/ios/ipa -name 'Runner.app' | head -1)"
-          IPA_DIR="$(dirname "$APP_PATH")"
-          # If already packaged as IPA, re-package with signed app
+          echo "Packaging: $APP_PATH"
+          rm -rf /tmp/Payload
           mkdir -p /tmp/Payload
-          cp -r "$APP_PATH" /tmp/Payload/
-          cd /tmp
-          zip -r bot_signed.ipa Payload
-          cp bot_signed.ipa "$GITHUB_WORKSPACE/bot_signed.ipa"
-          echo "IPA packaged: $GITHUB_WORKSPACE/bot_signed.ipa"
+          cp -r "$APP_PATH" /tmp/Payload/Runner.app
+          cd /tmp && zip -r bot_signed.ipa Payload
+          cp /tmp/bot_signed.ipa "$GITHUB_WORKSPACE/bot_signed.ipa"
           ls -lh "$GITHUB_WORKSPACE/bot_signed.ipa"
 
       - name: Upload signed IPA
