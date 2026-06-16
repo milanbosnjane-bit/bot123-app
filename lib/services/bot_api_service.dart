@@ -4,24 +4,26 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/bot_state.dart';
+import 'api_url_store.dart';
 
 class BotApiService {
-  BotApiService({http.Client? client}) : _client = client ?? http.Client();
+  BotApiService({required ApiUrlStore urlStore, http.Client? client})
+      : _urlStore = urlStore,
+        _client = client ?? http.Client();
 
+  final ApiUrlStore _urlStore;
   final http.Client _client;
   static const Duration _timeout = Duration(seconds: 10);
 
   Future<BotState> fetchState() async {
+    final url = _urlStore.stateUrl;
     final response = await _client
-        .get(
-          Uri.parse(ApiConfig.stateUrl),
-          headers: ApiConfig.requestHeaders,
-        )
+        .get(Uri.parse(url), headers: ApiConfig.requestHeaders)
         .timeout(
           _timeout,
           onTimeout: () => throw BotApiException(
-            'Timeout — nema odgovora sa ${ApiConfig.stateUrl}. '
-            'Proveri: ngrok tunel aktivan, api_server.py radi, baseUrl u api_config.dart.',
+            'Timeout — nema odgovora sa $url. '
+            'Proveri Settings: Tailscale uključen, api_server.py radi.',
           ),
         );
 
@@ -33,6 +35,21 @@ class BotApiService {
     return BotState.fromJson(json);
   }
 
+  /// Vraća true ako je bot_state dostupan.
+  Future<bool> checkHealth() async {
+    final url = _urlStore.healthUrl;
+    final response = await _client
+        .get(Uri.parse(url), headers: ApiConfig.requestHeaders)
+        .timeout(_timeout);
+
+    if (response.statusCode != 200) {
+      throw BotApiException('Health HTTP ${response.statusCode}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['bot_state_available'] == true;
+  }
+
   Future<void> sendCommand(
     String action, {
     Map<String, dynamic>? params,
@@ -41,7 +58,7 @@ class BotApiService {
 
     final response = await _client
         .post(
-          Uri.parse(ApiConfig.commandUrl),
+          Uri.parse(_urlStore.commandUrl),
           headers: ApiConfig.requestHeaders,
           body: jsonEncode(body),
         )
@@ -65,6 +82,25 @@ class BotApiService {
     );
   }
 
+  Future<void> sendRiskSettings({
+    required double maxDailyLossPct,
+    required double riskPerTradePct,
+    required double maxDrawdownPct,
+    required int leverage,
+    required double marginUsdt,
+  }) async {
+    await sendCommand(
+      'set_risk',
+      params: {
+        'max_daily_loss_pct': maxDailyLossPct,
+        'risk_per_trade_pct': riskPerTradePct,
+        'max_drawdown_pct': maxDrawdownPct,
+        'leverage': leverage,
+        'margin_usdt': marginUsdt,
+      },
+    );
+  }
+
   void dispose() => _client.close();
 }
 
@@ -75,4 +111,3 @@ class BotApiException implements Exception {
   @override
   String toString() => message;
 }
-

@@ -19,9 +19,12 @@ class BotState {
     this.marginUsdt = 100,
     this.positionSizeUsdt = 1000,
     this.maxDailyLossPct = 10,
+    this.riskPerTradePct = 1.8,
+    this.maxDrawdownPct = 10,
     this.cooldownSeconds = 15,
     this.marketState = '—',
     this.volatility = '—',
+    this.tickVolatility = 0,
     this.topBlocker = '—',
     this.tradeHistory = const [],
     this.sessionWins = 0,
@@ -50,9 +53,12 @@ class BotState {
   final double marginUsdt;
   final double positionSizeUsdt;
   final double maxDailyLossPct;
+  final double riskPerTradePct;
+  final double maxDrawdownPct;
   final double cooldownSeconds;
   final String marketState;
   final String volatility;
+  final double tickVolatility;
   final String topBlocker;
   final List<TradeHistoryItem> tradeHistory;
   final int sessionWins;
@@ -84,9 +90,12 @@ class BotState {
       marginUsdt: marginUsdt,
       positionSizeUsdt: positionSizeUsdt,
       maxDailyLossPct: maxDailyLossPct,
+      riskPerTradePct: riskPerTradePct,
+      maxDrawdownPct: maxDrawdownPct,
       cooldownSeconds: cooldownSeconds,
       marketState: marketState,
       volatility: volatility,
+      tickVolatility: tickVolatility,
       topBlocker: topBlocker,
       tradeHistory: tradeHistory,
       sessionWins: sessionWins,
@@ -126,18 +135,15 @@ class BotState {
     final grossPct =
         positionSize > 0 ? (grossUsdt / positionSize) * 100 : 0.0;
 
-    final lastTrade = json['last_closed_trade'] as Map<String, dynamic>?;
-    final trades = <TradeHistoryItem>[];
-    if (lastTrade != null && lastTrade.isNotEmpty) {
-      trades.add(TradeHistoryItem.fromJson(lastTrade));
-    }
+    final trades = _parseTradeHistory(json);
 
     final closedTrades = (session['closed_trades'] as num?)?.toInt() ?? 0;
     final dailyPnl = (session['daily_pnl_usdt'] as num?)?.toDouble() ?? 0;
     final avgPnl = (session['avg_pnl_usdt'] as num?)?.toDouble() ??
         (closedTrades > 0 ? dailyPnl / closedTrades : 0.0);
-    final lastExit = lastTrade?['exit_reason'] as String? ??
-        (trades.isNotEmpty ? trades.first.exitReason : '—');
+    final lastExit = trades.isNotEmpty
+        ? trades.first.exitReason
+        : '—';
 
     return BotState(
       symbol: config['symbol'] as String? ?? 'BTC/USDT',
@@ -165,10 +171,13 @@ class BotState {
       positionSizeUsdt: (control['position_size_usdt'] as num?)?.toDouble() ??
           (config['position_size_usdt'] as num?)?.toDouble() ??
           1000,
-      maxDailyLossPct: 10,
+      maxDailyLossPct: (control['max_daily_loss_pct'] as num?)?.toDouble() ?? 10,
+      riskPerTradePct: (control['risk_per_trade_pct'] as num?)?.toDouble() ?? 1.8,
+      maxDrawdownPct: (control['max_drawdown_pct'] as num?)?.toDouble() ?? 10,
       cooldownSeconds: 15,
       marketState: block['summary'] as String? ?? '—',
       volatility: _topFilterRate(filters, 'VOLATILITY'),
+      tickVolatility: (market['tick_volatility'] as num?)?.toDouble() ?? 0,
       topBlocker: block['top_filter'] as String? ?? '—',
       tradeHistory: trades,
       sessionWins: (session['wins'] as num?)?.toInt() ?? 0,
@@ -177,6 +186,21 @@ class BotState {
       lastExitReason: lastExit.isEmpty ? '—' : lastExit,
       avgProfitUsdt: avgPnl,
     );
+  }
+
+  static List<TradeHistoryItem> _parseTradeHistory(Map<String, dynamic> json) {
+    final recent = json['recent_trades'] as List<dynamic>?;
+    if (recent != null && recent.isNotEmpty) {
+      return recent
+          .whereType<Map<String, dynamic>>()
+          .map(TradeHistoryItem.fromJson)
+          .toList();
+    }
+    final lastTrade = json['last_closed_trade'] as Map<String, dynamic>?;
+    if (lastTrade != null && lastTrade.isNotEmpty) {
+      return [TradeHistoryItem.fromJson(lastTrade)];
+    }
+    return const [];
   }
 
   static String _topFilterRate(Map<String, dynamic> filters, String key) {
@@ -204,12 +228,12 @@ class TradeHistoryItem {
   factory TradeHistoryItem.fromJson(Map<String, dynamic> json) {
     final net = (json['net_pnl_usdt'] as num?)?.toDouble() ?? 0;
     final durationSec = (json['duration_seconds'] as num?)?.toDouble() ?? 0;
+    final side = json['position_side'] as String? ?? '—';
     return TradeHistoryItem(
-      side: json['position_side'] as String? ?? '—',
+      side: side,
       exitReason: json['exit_reason'] as String? ?? '—',
       netPnl: '${net >= 0 ? '+' : ''}${net.toStringAsFixed(2)} USDT',
       duration: '${durationSec.toStringAsFixed(0)}s',
     );
   }
 }
-

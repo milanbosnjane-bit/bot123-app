@@ -8,28 +8,36 @@ class BinancePriceService {
   BinancePriceService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
-  static const _binanceUrl =
-      'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
   static const Duration _timeout = Duration(seconds: 5);
 
-  Future<double?> fetchBtcPrice() async {
+  Future<double?> fetchPrice(String symbol, {String? stateUrl}) async {
+    final binanceSymbol = _toBinanceSymbol(symbol);
+    final url =
+        'https://api.binance.com/api/v3/ticker/price?symbol=$binanceSymbol';
     try {
       final response = await _client
-          .get(Uri.parse(_binanceUrl), headers: ApiConfig.requestHeaders)
+          .get(Uri.parse(url), headers: ApiConfig.requestHeaders)
           .timeout(_timeout);
-      if (response.statusCode != 200) return await _fetchFromBotState();
+      if (response.statusCode != 200) return await _fetchFromBotState(stateUrl);
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final price = double.tryParse(json['price'] as String? ?? '');
-      return price ?? await _fetchFromBotState();
+      return price ?? await _fetchFromBotState(stateUrl);
     } catch (_) {
-      return await _fetchFromBotState();
+      return await _fetchFromBotState(stateUrl);
     }
   }
 
-  Future<double?> _fetchFromBotState() async {
+  String _toBinanceSymbol(String symbol) {
+    final normalized = symbol.replaceAll('/', '').replaceAll('-', '').toUpperCase();
+    if (normalized.isEmpty) return 'BTCUSDT';
+    return normalized;
+  }
+
+  Future<double?> _fetchFromBotState(String? stateUrl) async {
+    final url = stateUrl ?? ApiConfig.stateUrlFor(ApiConfig.defaultBaseUrl);
     try {
       final response = await _client
-          .get(Uri.parse(ApiConfig.stateUrl), headers: ApiConfig.requestHeaders)
+          .get(Uri.parse(url), headers: ApiConfig.requestHeaders)
           .timeout(_timeout);
       if (response.statusCode != 200) return null;
       final json = jsonDecode(response.body) as Map<String, dynamic>;

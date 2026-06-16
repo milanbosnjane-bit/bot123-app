@@ -9,7 +9,14 @@ import '../theme/neon_styles.dart';
 import 'glow_card.dart';
 
 class ChartSection extends StatefulWidget {
-  const ChartSection({super.key});
+  const ChartSection({
+    super.key,
+    required this.symbol,
+    this.botStateUrl,
+  });
+
+  final String symbol;
+  final String? botStateUrl;
 
   @override
   State<ChartSection> createState() => _ChartSectionState();
@@ -24,12 +31,25 @@ class _ChartSectionState extends State<ChartSection> {
   Timer? _timer;
   double? _currentPrice;
   bool _fetchInFlight = false;
+  String _activeSymbol = 'BTC/USDT';
 
   @override
   void initState() {
     super.initState();
+    _activeSymbol = widget.symbol;
     _pollPrice();
     _timer = Timer.periodic(_pollInterval, (_) => _pollPrice());
+  }
+
+  @override
+  void didUpdateWidget(ChartSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.symbol != widget.symbol && widget.symbol.isNotEmpty) {
+      _activeSymbol = widget.symbol;
+      _prices.clear();
+      _currentPrice = null;
+      _pollPrice();
+    }
   }
 
   @override
@@ -43,7 +63,7 @@ class _ChartSectionState extends State<ChartSection> {
     if (_fetchInFlight) return;
     _fetchInFlight = true;
     try {
-      final price = await _priceService.fetchBtcPrice();
+      final price = await _priceService.fetchPrice(_activeSymbol, stateUrl: widget.botStateUrl);
       if (!mounted || price == null) return;
       setState(() {
         _currentPrice = price;
@@ -75,7 +95,7 @@ class _ChartSectionState extends State<ChartSection> {
               Row(
                 children: [
                   Text(
-                    'LIVE GRAFIKON CENE BTC',
+                    'LIVE GRAFIKON CENE ${_chartLabel(_activeSymbol)}',
                     style: NeonStyles.neonText(
                       Colors.purpleAccent,
                       fontSize: 12,
@@ -139,7 +159,7 @@ class _ChartSectionState extends State<ChartSection> {
                 ? Center(
                     child: Text(
                       _currentPrice == null
-                          ? 'Učitavam cenu BTC...'
+                          ? 'Učitavam cenu ${_chartLabel(_activeSymbol)}...'
                           : 'Prikupljam tačke...',
                       style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                     ),
@@ -273,6 +293,12 @@ class _ChartSectionState extends State<ChartSection> {
   String _formatAxisPrice(double value) {
     if (value >= 1000) return value.toStringAsFixed(0);
     return value.toStringAsFixed(1);
+  }
+
+  String _chartLabel(String symbol) {
+    final parts = symbol.split('/');
+    if (parts.isEmpty) return symbol.toUpperCase();
+    return parts.first.toUpperCase();
   }
 }
 

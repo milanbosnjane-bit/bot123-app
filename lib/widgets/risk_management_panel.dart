@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -9,12 +11,24 @@ class RiskManagementPanel extends StatefulWidget {
     super.key,
     required this.leverage,
     required this.marginUsdt,
-    required this.onApplyLeverage,
+    required this.maxDailyLossPct,
+    required this.riskPerTradePct,
+    required this.maxDrawdownPct,
+    required this.onApplyRisk,
   });
 
   final int leverage;
   final double marginUsdt;
-  final Future<void> Function(int leverage, double marginUsdt) onApplyLeverage;
+  final double maxDailyLossPct;
+  final double riskPerTradePct;
+  final double maxDrawdownPct;
+  final Future<void> Function({
+    required double maxDailyLossPct,
+    required double riskPerTradePct,
+    required double maxDrawdownPct,
+    required int leverage,
+    required double marginUsdt,
+  }) onApplyRisk;
 
   @override
   State<RiskManagementPanel> createState() => _RiskManagementPanelState();
@@ -25,24 +39,51 @@ class _RiskManagementPanelState extends State<RiskManagementPanel> {
   late double _maxDailyLoss;
   late double _maxDrawdown;
   late int _leverage;
+  Timer? _debounce;
 
   static const _leverageOptions = [5, 10, 15, 20, 25, 50];
 
   @override
   void initState() {
     super.initState();
-    _riskPerTrade = 1.0;
-    _maxDailyLoss = 5.0;
-    _maxDrawdown = 10.0;
+    _riskPerTrade = widget.riskPerTradePct;
+    _maxDailyLoss = widget.maxDailyLossPct;
+    _maxDrawdown = widget.maxDrawdownPct;
     _leverage = widget.leverage;
   }
 
   @override
   void didUpdateWidget(RiskManagementPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.leverage != widget.leverage) {
-      _leverage = widget.leverage;
+    if (oldWidget.leverage != widget.leverage) _leverage = widget.leverage;
+    if (oldWidget.maxDailyLossPct != widget.maxDailyLossPct) {
+      _maxDailyLoss = widget.maxDailyLossPct;
     }
+    if (oldWidget.riskPerTradePct != widget.riskPerTradePct) {
+      _riskPerTrade = widget.riskPerTradePct;
+    }
+    if (oldWidget.maxDrawdownPct != widget.maxDrawdownPct) {
+      _maxDrawdown = widget.maxDrawdownPct;
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleApply() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      widget.onApplyRisk(
+        maxDailyLossPct: _maxDailyLoss,
+        riskPerTradePct: _riskPerTrade,
+        maxDrawdownPct: _maxDrawdown,
+        leverage: _leverage,
+        marginUsdt: widget.marginUsdt,
+      );
+    });
   }
 
   @override
@@ -70,7 +111,10 @@ class _RiskManagementPanelState extends State<RiskManagementPanel> {
             min: 0.5,
             max: 5,
             suffix: '%',
-            onChanged: (v) => setState(() => _riskPerTrade = v),
+            onChanged: (v) {
+              setState(() => _riskPerTrade = v);
+              _scheduleApply();
+            },
           ),
           _CyberSlider(
             label: 'Max Daily Loss',
@@ -78,7 +122,10 @@ class _RiskManagementPanelState extends State<RiskManagementPanel> {
             min: 1,
             max: 20,
             suffix: '%',
-            onChanged: (v) => setState(() => _maxDailyLoss = v),
+            onChanged: (v) {
+              setState(() => _maxDailyLoss = v);
+              _scheduleApply();
+            },
           ),
           _CyberSlider(
             label: 'Max Drawdown',
@@ -86,7 +133,10 @@ class _RiskManagementPanelState extends State<RiskManagementPanel> {
             min: 5,
             max: 30,
             suffix: '%',
-            onChanged: (v) => setState(() => _maxDrawdown = v),
+            onChanged: (v) {
+              setState(() => _maxDrawdown = v);
+              _scheduleApply();
+            },
           ),
           const SizedBox(height: 6),
           const Text('Leverage', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
@@ -133,7 +183,13 @@ class _RiskManagementPanelState extends State<RiskManagementPanel> {
                 onChanged: (v) async {
                   if (v == null) return;
                   setState(() => _leverage = v);
-                  await widget.onApplyLeverage(v, widget.marginUsdt);
+                  await widget.onApplyRisk(
+                    maxDailyLossPct: _maxDailyLoss,
+                    riskPerTradePct: _riskPerTrade,
+                    maxDrawdownPct: _maxDrawdown,
+                    leverage: v,
+                    marginUsdt: widget.marginUsdt,
+                  );
                 },
               ),
             ),
@@ -236,4 +292,3 @@ class _CyberSlider extends StatelessWidget {
     );
   }
 }
-
